@@ -94,7 +94,7 @@ All results are on the held-out test set (1,409 customers, 374 churners).
 
 # Week 3: Model Optimization and Unsupervised Learning
 
-**Author:** Syed Najeeb Ullah Shah
+**Author:** Raja Fahad kiani
 **Course:** Introduction to Applied AI
 **Date:** 3 October, 2026
 **Dataset:** Telco Customer Churn (7,043 customers, 30 features after one-hot encoding; 5,634 train / 1,409 test)
