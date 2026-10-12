@@ -4,9 +4,9 @@ A Streamlit web app that scores telecom customers for churn risk, shows which ch
 
 **Live app:** https://applied-ai-project1-churn-us35rrybbr9qmta9uqexdv.streamlit.app/  <!-- replace with your real Streamlit URL -->
 
-| One customer | Batch scoring |
-|---|---|
-| ![One customer](Screenshot 2026-10-12 121836.png) | ![Batch scoring](screenshots/batch_scoring.png) |
+![Single customer view](single_customer.png)
+
+![Single customer view](single_customer.png)
 
 ---
 
