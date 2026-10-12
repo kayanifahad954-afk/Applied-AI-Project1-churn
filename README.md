@@ -2,7 +2,7 @@
 
 A Streamlit web app that scores telecom customers for churn risk, shows which changes would lower that risk, and scores whole customer files in one go.
 
-**Live app:** https://YOUR-APP-NAME.streamlit.app  <!-- replace with your real Streamlit URL -->
+**Live app:** https://applied-ai-project1-churn-us35rrybbr9qmta9uqexdv.streamlit.app/  <!-- replace with your real Streamlit URL -->
 
 | One customer | Batch scoring |
 |---|---|
