@@ -1,153 +1,232 @@
-# Customer Churn Prediction 
+# Churn Risk Advisor
 
+A Streamlit web app that scores telecom customers for churn risk, shows which changes would lower that risk, and scores whole customer files in one go.
 
-# Week 2 – Building, Evaluating, and Interpreting ML Models
+**Live app:** https://YOUR-APP-NAME.streamlit.app  <!-- replace with your real Streamlit URL -->
 
+| One customer | Batch scoring |
+|---|---|
+| ![One customer](screenshots/one_customer.png) | ![Batch scoring](screenshots/batch_scoring.png) |
 
+---
 
-## Overview
+## Model card: Churn Risk Advisor v1.0
 
-This notebook trains and evaluates several machine learning models to predict **customer churn** on the Telco Customer Churn dataset. It goes beyond accuracy by using precision, recall, F1-score, ROC-AUC, and a business-cost analysis to choose both a model and a decision threshold.
+**Intended use:** rank existing telecom customers by churn risk so a retention team can prioritize calls. Decision support, not automation.
 
-**Models compared**
+**Not for:** credit, pricing, or any decision that denies a service.
 
-- Baseline Dummy Classifier (always predicts "Stay")
-- Logistic Regression
-- Balanced Logistic Regression (`class_weight='balanced'`)
-- Decision Tree (max depth 5)
-- Random Forest (300 trees)
+**Data:** IBM Telco Customer Churn, 7,043 customers, 26.5% churn.
 
+**Model:** XGBoost (`XGBClassifier`), tuned with randomized search and chosen by 5-fold CV. Features: 30 encoded columns.
 
+**Performance:** CV AUC 0.8502 ± 0.0117; test AUC 0.8483 (test set used once).
 
-**Preprocessing**
+**Threshold:** 0.30, from a cost analysis (FN = PKR 6,000, FP = PKR 1,000).
 
-1. Convert `TotalCharges` from text to numeric. The 11 blank values (all with tenure = 0) are filled with the median.
-2. Drop `customerID` and the target from the features.
-3. One-hot encode categorical columns (`drop_first=True`).
-4. Stratified 80/20 train/test split (`random_state=42`): 5,634 training rows and 1,409 test rows.
+**Limitations:** one US dataset from one period; no Pakistan data; associations, not causes; performance may drift as plans change.
 
-## Notebook Structure
+**Fairness check (Week 15):** compare recall across gender and seniors.
 
-| Part | Topic | What it covers |
+**Owner and version:** Raja Fahad Kiyani, v1.0, 12 October 2026.
+
+---
+
+## How the numbers in the model card were obtained
+
+### 1. Data and split
+
+One-hot encoding turns a column with $k$ categories into $k-1$ indicator columns:
+
+$$\text{encoded columns} = \underbrace{4}_{\text{numeric}} + \underbrace{\sum_j (k_j - 1)}_{26\ \text{dummy columns}} = 30$$
+
+A stratified 80/20 split keeps the churn rate the same in both parts:
+
+$$n_{test} = \lceil 0.2 \times 7043 \rceil = 1409, \qquad n_{train} = 7043 - 1409 = 5634$$
+
+The majority-class baseline (always predict "stays") scores
+
+$$\text{baseline accuracy} = 1 - 0.265 = 0.735$$
+
+### 2. Performance: mean ± standard deviation over 5 folds
+
+The model was selected using stratified 5-fold cross-validation on the training set only:
+
+$$\overline{AUC} = \frac{1}{K}\sum_{k=1}^{K} AUC_k = 0.8502, \qquad \sigma = \sqrt{\frac{1}{K}\sum_{k=1}^{K}\left(AUC_k - \overline{AUC}\right)^2} = 0.0117, \qquad K = 5$$
+
+AUC is the probability that a randomly chosen churner is scored higher than a randomly chosen non-churner:
+
+$$AUC = P\big(\text{score}(\text{churner}) > \text{score}(\text{non-churner})\big)$$
+
+Standard error of the fold average, and the gap to the next-best model (Random Forest, CV AUC 0.8464):
+
+$$SE = \frac{\sigma}{\sqrt{K}} = \frac{0.0117}{\sqrt{5}} \approx 0.0052, \qquad \Delta = 0.8502 - 0.8464 = 0.0038 < 1\,SE$$
+
+The gap is within noise, so XGBoost is only marginally ahead. Logistic Regression and Random Forest tied at 0.8464.
+
+The locked test set was scored once:
+
+$$AUC_{test} = 0.8483, \qquad |AUC_{CV} - AUC_{test}| = |0.8502 - 0.8483| = 0.0019 \ll \sigma = 0.0117$$
+
+The CV estimate matches the test result, so there is no sign of over-fitting to the validation folds.
+
+| Model | CV AUC (mean ± std) |
+|---|---|
+| Logistic Regression (tuned C = 10) | 0.8464 ± 0.0129 |
+| Random Forest (random search) | 0.8464 ± 0.0114 |
+| **XGBoost (tuned)** | **0.8502 ± 0.0117** |
+
+Tuned XGBoost settings: `max_depth = 2`, `learning_rate = 0.034`, `n_estimators = 476`, `subsample = 0.6`, `colsample_bytree = 0.561`, `min_child_weight = 1`, `reg_lambda = 1.974`.
+
+### 3. Test-set metrics at the 0.5 cut-off (approximate reconstruction)
+
+$$\text{Recall} = \frac{TP}{TP+FN} = 0.521, \qquad \text{Precision} = \frac{TP}{TP+FP} = 0.659, \qquad F_1 = \frac{2PR}{P+R} \approx 0.58$$
+
+The confusion matrix was not printed, so the counts below are reconstructed from these rates and the expected 374 churners in the test set ($0.265 \times 1409$):
+
+$$TP \approx 0.521 \times 374 \approx 195, \quad FN \approx 179, \quad FP \approx \frac{195}{0.659} - 195 \approx 101, \quad TN \approx 934$$
+
+### 4. Decision threshold (cost analysis)
+
+Contact a customer when the expected cost of ignoring a churner is larger than the cost of a wasted contact:
+
+$$p \cdot C_{FN} > (1-p)\cdot C_{FP} \;\Longrightarrow\; p > \frac{C_{FP}}{C_{FP}+C_{FN}} = \frac{1{,}000}{7{,}000} \approx 0.143$$
+
+That break-even assumes every contact saves a churner. If a retention offer succeeds with probability $s$:
+
+$$p > \frac{C_{FP}}{s \cdot C_{FN}}$$
+
+The chosen threshold $t = 0.30$ corresponds to
+
+$$s = \frac{C_{FP}}{t \cdot C_{FN}} = \frac{1{,}000}{0.30 \times 6{,}000} \approx 0.56$$
+
+so it assumes about a 56% save rate. Total cost of a set of decisions:
+
+$$\text{Cost} = C_{FN}\cdot FN + C_{FP}\cdot FP$$
+
+For reference, the reconstructed 0.5 cut-off on the test set costs about $179 \times 6{,}000 + 101 \times 1{,}000 \approx \text{PKR } 1.18$ million. Lowering the cut-off to 0.30 catches more churners at the price of more wasted contacts, which is why the app uses 0.30.
+
+### 5. Risk bands shown in the app
+
+$$\text{band}(p) = \begin{cases} \text{HIGH (contact now)} & p \ge t \\ \text{WATCH} & t/2 \le p < t \\ \text{LOW} & p < t/2 \end{cases} \qquad t = 0.30 \text{ by default (adjustable in the sidebar)}$$
+
+---
+
+## Making sure the app answers like the notebook
+
+### Training-serving skew
+
+Using `get_dummies(drop_first=True)` on a single customer drops the only category present, so a two-year-contract customer looks like a month-to-month one:
+
+| Encoding | Contract columns | P(churn) |
 |---|---|---|
-| 1 | Preprocessing, split, baseline | Cleaning, encoding, stratified split, "always stay" baseline |
-| 2 | Logistic Regression | Pipeline with `StandardScaler`, odds ratios, manual sigmoid check |
-| 3 | Confusion matrix and metrics | TN/FP/FN/TP, precision/recall/F1 by hand vs. scikit-learn |
-| 4 | ROC-AUC, thresholds, business cost | Threshold sweep, cost-based threshold selection |
-| 5 | Decision Trees and Random Forests | Depth vs. overfitting, Gini check, OOB score, permutation importance |
-| 6 | Class imbalance and feature engineering | Balanced weights, engineered features (`n_services`, `is_new`, `charge_per_mo`, `price_jump`) |
-| 7 | Model comparison | Final table, deployment recommendation |
-| – | Check Your Understanding | Six conceptual questions with worked answers |
+| Wrong (`drop_first=True`, one row) | `[0, 0]` | 0.136 |
+| Right (`prepare_input`) | `[0, 1]` | 0.012 |
 
-## Key Results
+$$\text{odds ratio} = \frac{0.136/0.864}{0.012/0.988} = \frac{0.157}{0.0121} \approx 13$$
 
-All results are on the held-out test set (1,409 customers, 374 churners).
+No error is raised, so the app would silently overstate this customer's risk about 13 times in odds terms. The app therefore encodes with every category kept, then re-indexes to the 30 training columns.
 
-| Model | Accuracy | Precision | Recall | F1 | AUC |
+### Parity test
+
+$$\Delta_{max} = \max_{i=1,\dots,7043}\big|p_i^{train} - p_i^{serve}\big| = 0.0$$
+
+Passed on all 7,043 customers, so the app's input path reproduces the notebook exactly. Re-run it whenever the model, the encoding or a library version changes.
+
+### Derived input
+
+$$TotalCharges \approx tenure \times MonthlyCharges$$
+
+The app calculates this itself so users cannot enter impossible combinations.
+
+### What-if analysis
+
+For a change to one input:
+
+$$\Delta = p' - p, \qquad \text{relative reduction} = \frac{p - p'}{p}$$
+
+Example from the notebook, riskiest customer with baseline $p = 0.935$:
+
+| Change | New $p$ | $\Delta$ | Relative reduction |
+|---|---|---|---|
+| One-year contract | 0.862 | −0.073 | 7.8% |
+| Two-year contract | 0.765 | −0.170 | 18.2% |
+| Credit card (automatic) | 0.913 | −0.022 | 2.4% |
+
+These are associations learned from past customers, not proven effects. A randomized offer test would be needed to show that offering a contract makes someone stay.
+
+### About the age input
+
+The training data has no exact age, only a `SeniorCitizen` flag. The age slider converts age 65 and above to that flag:
+
+$$\text{SeniorCitizen} = \mathbf{1}[\text{age} \ge 65]$$
+
+so two customers on either side of the cutoff score differently, but customers of different ages on the same side score the same.
+
+---
+
+## Customer segments (K-means, k = 4)
+
+| Cluster | Customers | Avg tenure (months) | Avg monthly (USD) | Services | Churn rate |
 |---|---|---|---|---|---|
-| Baseline | 0.735 | 0.000 | 0.000 | 0.000 | 0.500 |
-| Logistic Regression | 0.807 | 0.658 | 0.567 | 0.609 | 0.842 |
-| LR balanced | 0.739 | 0.505 | 0.781 | 0.613 | 0.841 |
-| Decision Tree (d=5) | 0.796 | 0.632 | 0.551 | 0.589 | 0.829 |
-| Random Forest | 0.807 | 0.673 | 0.529 | 0.593 | 0.842 |
+| 1 (riskiest) | 2,157 | 18.4 | 80.41 | 3.28 | 43% |
+| 3 | 1,918 | 9.0 | 37.71 | 1.20 | 32% |
+| 2 | 1,938 | 59.8 | 92.09 | 5.06 | 14% |
+| 0 | 1,030 | 53.6 | 30.96 | 1.48 | 5% |
 
-### Main findings
+Consistency check, the weighted churn rate recovers the overall rate:
 
-- **Baseline:** "Always stay" scores 73.5% accuracy but catches 0 of 374 churners, so accuracy alone is misleading on this data.
-- **Churn drivers (Logistic Regression):**
-  - Risk factors: fiber-optic internet (odds ratio 2.18), `TotalCharges` (1.64), streaming services (about 1.29).
-  - Protective factors: longer `tenure` (0.30), `MonthlyCharges` (0.40), two-year contract (0.56).
-  - `TotalCharges` and `MonthlyCharges` are correlated with tenure and each other, so their individual weights should not be read as separate causes.
-- **Threshold selection:** With a missed churner costing PKR 6,000 and a false alarm costing PKR 1,000, the theoretical threshold is 1000 / (1000 + 6000) ≈ 0.14. The empirical best on the 0.05 grid is **0.15**.
-  - At 0.5: 212 churners caught, 110 false alarms, cost PKR 1,082,000.
-  - At 0.15: 344 churners caught, 437 false alarms, cost PKR 617,000.
-  - Saving: **PKR 465,000 (about 43%)**.
-- **Overfitting:** Decision tree test accuracy peaks at depth 6. The unrestricted tree reaches 0.998 train vs. 0.742 test accuracy (gap 0.256).
-- **Random Forest:** OOB accuracy (0.803) matches test accuracy (0.807). Top permutation-importance features are `tenure`, `TotalCharges`, and `Contract_Two year`.
-- **Class weighting:** Balanced weights raise recall (0.567 to 0.781) at the cost of precision, with no change in AUC. It moves the operating point, much like lowering the threshold.
-- **Feature engineering:** The engineered features did not improve the Random Forest (AUC 0.8422 to 0.8420).
+$$\frac{2157(0.43) + 1918(0.32) + 1938(0.14) + 1030(0.05)}{7043} = \frac{1864}{7043} \approx 0.265$$
 
-### Recommendation
+Cluster 1 holds 30.6% of customers but about half of all churners:
 
-**Deploy Logistic Regression at threshold 0.15.** It ties the Random Forest on AUC and accuracy, achieves a lower business cost at the chosen threshold (PKR 617,000 vs. 645,000), and is easy to explain through odds ratios.
+$$\text{share of churners} = \frac{2157 \times 0.43}{1864} \approx 0.50, \qquad \text{lift} = \frac{0.43}{0.265} \approx 1.62$$
 
-## Limitations
+---
 
-- The threshold was selected on the same test set used for evaluation, so the cost saving is slightly optimistic. Cross-validation (Week 3) is the proper fix.
-- Cost figures (PKR 6,000 per missed churner, PKR 1,000 per unnecessary offer) are lab assumptions, not measured business data.
-
-  ## Biggest Lesson
- 
-**Accuracy is not the goal. The right decision threshold, chosen using business cost, matters more than the choice of model.**
- 
-- **Accuracy hides failure.** A model that always predicts "Stay" scores 73.5% and catches zero churners. Logistic Regression's 80.7% still misses 162 of 374 churners (43%). Recall, precision, and AUC show what accuracy hides.
-- **The model is only half the decision.** Logistic Regression and Random Forest tied on AUC (0.842), so neither separates churners better. Changing the threshold from 0.5 to 0.15 raised recall from 0.567 to 0.920 and cut the cost by PKR 465,000 (about 43%), far more than switching models did.
-- **Costs are not symmetric.** A missed churner (PKR 6,000) costs six times a false alarm (PKR 1,000). Decision theory gives the threshold directly: t* = C_FP / (C_FP + C_FN) ≈ 0.14, which the empirical search confirmed.
-- **Fancier is not always better.** The Random Forest, balanced class weights, and engineered features did not improve AUC. The simple, explainable Logistic Regression was the best choice to deploy.
-- The threshold was selected on the same test set used for evaluation, so the cost saving is slightly optimistic. Cross-validation (Week 3) is the proper fix.
-- Cost figures (PKR 6,000 per missed churner, PKR 1,000 per unnecessary offer) are lab assumptions, not measured business data.
-
-
+## Run locally
 
 ```bash
+mkdir churn-risk-advisor
+cd churn-risk-advisor
+# copy in: app.py, churn_model.joblib, model_meta.json, sample_customers.csv, requirements.txt
+python -m venv .venv
+.venv\Scripts\activate          # Windows (Mac/Linux: source .venv/bin/activate)
+pip install -r requirements.txt
+streamlit run app.py
 ```
 
-# Week 3: Model Optimization and Unsupervised Learning
+`requirements.txt` pins the library versions used for training, because the saved model can only be loaded safely with the same scikit-learn:
 
-**Author:** Raja Fahad kiani
-**Course:** Introduction to Applied AI
-**Date:** 3 October, 2026
-**Dataset:** Telco Customer Churn (7,043 customers, 30 features after one-hot encoding; 5,634 train / 1,409 test)
+```
+streamlit>=1.32
+scikit-learn==1.6.1
+pandas
+numpy
+joblib
+xgboost==YOUR_XGBOOST_VERSION
+matplotlib
+```
 
-## Results Summary
+## Repository contents
 
-- **Split-to-split accuracy range across 20 seeds:** 0.780 to 0.828 (std 0.0104; theoretical 95% CI is about ±0.021, which matches the observed spread)
-- **5-fold CV AUC (tuned models):**
-  - LR: 0.846 ± 0.013
-  - RF: 0.846 ± 0.011
-  - XGBoost: 0.850 ± 0.012
-- **Tuning:**
-  - Best RF params (random search, used in the final comparison): `max_depth=15`, `max_features≈0.213`, `min_samples_leaf=15` (CV AUC 0.8464)
-  - Best RF params (grid search): `max_depth=8`, `max_features='sqrt'`, `min_samples_leaf=20` (CV AUC 0.8468)
-  - Grid vs random search time: 105 s (24 combos, 120 fits) vs 108 s (24 iterations, 120 fits). The AUCs differ by only 0.0004, so the two methods performed the same.
-  - Best XGBoost params: `max_depth=2`, `learning_rate≈0.034`, `n_estimators=476`, `subsample=0.6`, `colsample_bytree≈0.561`, `min_child_weight=1`, `reg_lambda≈1.97`
-- **Test AUC of final model (used once):** 0.8483 (tuned XGBoost; recall 0.521, precision 0.659 at a 0.5 threshold)
-- **Customer segments (k = 4):**
-  - **New, low-spend, few services:** 1,918 customers, 32% churn
-  - **Mid-tenure, high-spend, few add-ons:** 2,157 customers, 43% churn (highest risk)
-  - **Loyal, high-spend, heavy bundle:** 1,938 customers, 14% churn
-  - **Loyal, low-spend, basic plan:** 1,030 customers, 5% churn (lowest risk)
-- **PCA:** 15 of 30 components explain 90% of the variance
-- **Biggest lesson:** The gaps between tuned models (about 0.004 AUC) are smaller than the fold-to-fold noise (about 0.012) and the split-to-split noise (about ±2 points of accuracy), so a single split or a small score difference should never be treated as proof that one model is better.
+```
+churn-risk-advisor/
+├── app.py
+├── churn_model.joblib
+├── model_meta.json
+├── requirements.txt
+├── sample_customers.csv     # 50 customers for the batch demo
+├── README.md                # this file with the model card
+└── screenshots/
+```
 
-## Segment Profiles
+## Notebooks
 
-| Segment | Customers | Avg tenure (months) | Avg monthly ($) | Avg services | Churn |
-|---|---|---|---|---|---|
-| Mid-tenure, high-spend, few add-ons | 2,157 | 18.4 | 80.41 | 3.3 | 43% |
-| New, low-spend, few services | 1,918 | 9.0 | 37.71 | 1.2 | 32% |
-| Loyal, high-spend, heavy bundle | 1,938 | 59.8 | 92.09 | 5.1 | 14% |
-| Loyal, low-spend, basic plan | 1,030 | 53.6 | 30.96 | 1.5 | 5% |
+- Week 1: https://www.kaggle.com/YOUR-LINK-WEEK-1
+- Week 2: https://www.kaggle.com/YOUR-LINK-WEEK-2
+- Week 3 and 4: https://www.kaggle.com/YOUR-LINK-WEEK-3
 
-Churn was not used to form the clusters, only to profile them.
+## Security note
 
-## Method Notes
-
-1. **Split variance:** Logistic Regression was retrained on 20 random 75/25 splits of the training data to show how much accuracy moves from the split alone.
-2. **Model comparison:** Stratified 5-fold CV, with the scaler inside a `Pipeline` to avoid leakage. The untuned baseline gave LR 0.846 and RF 0.844 AUC.
-3. **Tuning:** LR was tuned with a validation curve (best C = 10). RF was tuned with both grid and random search. XGBoost used early stopping (best at 247 trees, validation AUC 0.854) and then random search over 30 iterations.
-4. **Model selection:** Tuned XGBoost had the best CV AUC and was evaluated on the locked test set exactly once, then saved as `churn_model.joblib` for Week 4.
-5. **Segmentation:** K-means on standardized tenure, MonthlyCharges, TotalCharges, and number of services, with k = 4 chosen from the elbow and silhouette plots.
-6. **PCA:** The first principal component is dominated by the "No internet service" dummy columns, which have identical loadings (0.302). These columns are redundant copies of the same information, which is why 30 features compress to fewer components.
-
-## Caveats
-
-- Test AUC (0.848) is close to CV AUC (0.850), which suggests no serious overfitting to the CV folds.
-- Recall of 0.52 means about half of churners are missed at the default 0.5 threshold. A lower threshold may be worth exploring in Week 4.
-- The segmentation was fit on all 7,043 customers, not only the training set. This is acceptable for unsupervised profiling but should not be used to build features for the predictive model without refitting inside CV.
-
-
-
-
-
-**Biggest lesson:** A small score gap between models, like the 0.004 AUC between tuned XGBoost and the others, is smaller than the noise from CV folds (about 0.012) and random splits (about ±2 points of accuracy), so I can't treat a single split or a tiny difference as proof that one model is better.
+Loading a joblib or pickle file runs code stored inside it. Only load `churn_model.joblib` from this repository, never a model file from a source you do not trust.
