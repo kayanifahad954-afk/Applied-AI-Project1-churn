@@ -6,7 +6,7 @@ A Streamlit web app that scores telecom customers for churn risk, shows which ch
 
 | One customer | Batch scoring |
 |---|---|
-| ![One customer](screenshots/one_customer.png) | ![Batch scoring](screenshots/batch_scoring.png) |
+| ![One customer](Screenshot 2026-10-12 121836.png) | ![Batch scoring](screenshots/batch_scoring.png) |
 
 ---
 
