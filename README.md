@@ -6,7 +6,7 @@ A Streamlit web app that scores telecom customers for churn risk, shows which ch
 
 ![Single customer view](s1.png)
 
-![Single customer view](single_customer.png)
+![Single customer view](s2.png)
 
 ---
 
