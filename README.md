@@ -223,9 +223,9 @@ churn-risk-advisor/
 
 ## Notebooks
 
-- Week 1: https://www.kaggle.com/YOUR-LINK-WEEK-1
-- Week 2: https://www.kaggle.com/YOUR-LINK-WEEK-2
-- Week 3 and 4: https://www.kaggle.com/YOUR-LINK-WEEK-3
+- Week 1: https://github.com/kayanifahad954-afk/Applied-AI-Project1-churn/blob/main/notebookab4e09e9cf.ipynb
+- Week 2: https://github.com/kayanifahad954-afk/Applied-AI-Project1-churn/blob/main/week2-ml-models.ipynb
+- Week 3 and 4: https://github.com/kayanifahad954-afk/Applied-AI-Project1-churn/blob/main/week-3-model-optimization.ipynb
 
 ## Security note
 
